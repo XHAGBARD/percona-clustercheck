@@ -35,6 +35,7 @@ AVAILABLE_WHEN_DONOR=${3:-0}
 ERR_FILE="${4:-/dev/null}"
 AVAILABLE_WHEN_READONLY=${5:-1}
 DEFAULTS_EXTRA_FILE=${6:-/etc/my.cnf}
+NUMBER_CLUSTER_SIZE=1
 
 #Timeout exists for instances where mysqld may be hung
 TIMEOUT=10
@@ -80,6 +81,26 @@ then
             exit 1
         fi
     fi
+    
+    # Check if node is isolated.
+        SIZE_CLUSTER=$($MYSQL_CMDLINE -e "SHOW GLOBAL STATUS LIKE 'wsrep_cluster_size';" \
+                    2>${ERR_FILE} | tail -1 2>>${ERR_FILE})
+
+        if [[ "${SIZE_CLUSTER}" -le "${NUMBER_CLUSTER_SIZE}" ]];then
+            # Percona XtraDB Cluster node local state is 'Synced', but it is
+            # isolated.
+            # => return HTTP 503
+            # Shell return-code is 1
+            echo -en "HTTP/1.1 503 Service Unavailable\r\n"
+            echo -en "Content-Type: text/plain\r\n"
+            echo -en "Connection: close\r\n"
+            echo -en "Content-Length: 42\r\n"
+            echo -en "\r\n"
+            echo -en "Percona XtraDB Cluster Node is isolated.\r\n"
+            sleep 0.1
+            exit 1
+        fi
+
     # Percona XtraDB Cluster node local state is 'Synced' => return HTTP 200
     # Shell return-code is 0
     echo -en "HTTP/1.1 200 OK\r\n"
